@@ -94,6 +94,56 @@ impl HttpClient {
         }
     }
 
+    /// 发送请求并读取响应体文本。
+    ///
+    /// 相比 [`execute_with_retry`]，除了对网络错误 / 5xx / 429 重试外，
+    /// 还会在 **2xx 但响应体为空** 时按退避重试——上游（Cloudflare Worker
+    /// 代理 VPN Gate）在被限流时会返回 `200 + 空 body`，若不重试会被误判为
+    /// 「列表为空」。重试耗尽后仍为空则返回该空字符串，交由上层决定。
+    pub async fn fetch_text_nonempty<F>(&self, make_request: F) -> Result<String>
+    where
+        F: Fn() -> reqwest::RequestBuilder,
+    {
+        let mut attempt = 0u32;
+        loop {
+            match make_request().send().await {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if (status.is_server_error() || status.as_u16() == 429)
+                        && attempt < self.max_retries
+                    {
+                        warn!(
+                            status = status.as_u16(),
+                            attempt, "收到可重试状态码，准备退避重试"
+                        );
+                        self.sleep_backoff(attempt).await;
+                        attempt += 1;
+                        continue;
+                    }
+
+                    let text = resp.text().await.context("读取响应体失败")?;
+                    if text.trim().is_empty() && attempt < self.max_retries {
+                        warn!(attempt, "响应体为空（上游可能限流/间歇性空响应），准备退避重试");
+                        self.sleep_backoff(attempt).await;
+                        attempt += 1;
+                        continue;
+                    }
+                    return Ok(text);
+                }
+                Err(err) => {
+                    let retryable = err.is_timeout() || err.is_connect() || err.is_request();
+                    if retryable && attempt < self.max_retries {
+                        warn!(error = %err, attempt, "请求失败，准备退避重试");
+                        self.sleep_backoff(attempt).await;
+                        attempt += 1;
+                        continue;
+                    }
+                    return Err(err).context("HTTP 请求失败且已达最大重试次数");
+                }
+            }
+        }
+    }
+
     /// 指数退避：base * 2^attempt。
     async fn sleep_backoff(&self, attempt: u32) {
         let factor = 2u32.saturating_pow(attempt);

@@ -88,18 +88,20 @@ impl<'a> SstpChecker<'a> {
 
     /// 拉取 SSTP 列表（按行拆分并过滤空行）。
     async fn get_list(&self) -> Result<Vec<String>> {
-        let resp = self
+        // 用 fetch_text_nonempty：上游（CF Worker 代理 VPN Gate）限流时会返回
+        // 「200 + 空 body」，这里会按退避自动重试，尽量拿到非空列表。
+        let text = self
             .http
-            .execute_with_retry(|| {
+            .fetch_text_nonempty(|| {
                 self.http
                     .inner()
                     .get(&self.cfg.list_url)
                     .query(&[("_t", timestamp_ms().to_string())])
                     .header("Referer", format!("{}/", self.cfg.referer))
             })
-            .await?;
+            .await
+            .context("读取 SSTP 列表响应失败")?;
 
-        let text = resp.text().await.context("读取 SSTP 列表响应失败")?;
         let list = text
             .split('\n')
             .map(|s| s.trim())

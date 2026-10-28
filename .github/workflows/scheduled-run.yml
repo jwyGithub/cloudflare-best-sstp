@@ -52,6 +52,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SSTP_PASSWORD: ${{ secrets.SSTP_PASSWORD }}
           SSTP_PROXY: ${{ secrets.SSTP_PROXY }}
+          # 非敏感的输出模板，接到仓库 Variables；未设置时传入空串，
+          # 程序侧 env_or 会自动回落到内置默认模板（不会产生空模板）。
+          OUTPUT_TEMPLATE: ${{ vars.SSTP_OUTPUT_TEMPLATE }}
           FILE_PATH: ${{ github.event.inputs.file_path || 'sstp.txt' }}
         run: |
           set -euo pipefail
@@ -60,6 +63,7 @@ jobs:
             -e SSTP_PASSWORD \
             -e SSTP_PROXY \
             -e SSTP_OUTPUT_FILE_ENABLED=false \
+            -e SSTP_OUTPUT_TEMPLATE="$OUTPUT_TEMPLATE" \
             -e GITHUB_SYNC_ENABLED=true \
             -e GITHUB_TOKEN="$GH_TOKEN" \
             -e GITHUB_REPO="${GITHUB_REPOSITORY}" \
