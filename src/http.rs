@@ -123,7 +123,10 @@ impl HttpClient {
 
                     let text = resp.text().await.context("读取响应体失败")?;
                     if text.trim().is_empty() && attempt < self.max_retries {
-                        warn!(attempt, "响应体为空（上游可能限流/间歇性空响应），准备退避重试");
+                        warn!(
+                            attempt,
+                            "响应体为空（上游可能限流/间歇性空响应），准备退避重试"
+                        );
                         self.sleep_backoff(attempt).await;
                         attempt += 1;
                         continue;
