@@ -2,6 +2,16 @@
 
 use serde::Deserialize;
 
+/// SSTP 列表接口返回结构。
+///
+/// 新版接口返回 JSON：`{ "data": ["sstp://...", ...], "total": N }`。
+/// 这里只关心 `data`，其余字段（如 `total`）会被忽略。
+#[derive(Debug, Clone, Deserialize)]
+pub struct ListResponse {
+    #[serde(default)]
+    pub data: Vec<String>,
+}
+
 /// 检测接口返回结构。
 ///
 /// 接口对成功 / 失败返回的字段并不完全一致，这里统一用可选字段兼容：

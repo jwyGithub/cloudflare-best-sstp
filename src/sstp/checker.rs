@@ -14,7 +14,7 @@ use tracing::{debug, info, warn};
 
 use crate::config::RequestConfig;
 use crate::http::HttpClient;
-use crate::sstp::model::{CheckResponse, SuccessNode};
+use crate::sstp::model::{CheckResponse, ListResponse, SuccessNode};
 
 /// SSTP 检测器。
 pub struct SstpChecker<'a> {
@@ -86,7 +86,7 @@ impl<'a> SstpChecker<'a> {
         Ok(auth)
     }
 
-    /// 拉取 SSTP 列表（按行拆分并过滤空行）。
+    /// 拉取 SSTP 列表并解析出节点（过滤空项）。
     async fn get_list(&self) -> Result<Vec<String>> {
         // 用 fetch_text_nonempty：上游（CF Worker 代理 VPN Gate）限流时会返回
         // 「200 + 空 body」，这里会按退避自动重试，尽量拿到非空列表。
@@ -102,11 +102,15 @@ impl<'a> SstpChecker<'a> {
             .await
             .context("读取 SSTP 列表响应失败")?;
 
-        let list = text
-            .split('\n')
-            .map(|s| s.trim())
+        // 新版接口返回 JSON：{ "data": ["sstp://...", ...], "total": N }。
+        let parsed: ListResponse =
+            serde_json::from_str(&text).context("解析 SSTP 列表 JSON 失败")?;
+
+        let list = parsed
+            .data
+            .into_iter()
+            .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
-            .map(|s| s.to_string())
             .collect();
         Ok(list)
     }

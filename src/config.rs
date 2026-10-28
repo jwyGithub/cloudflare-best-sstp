@@ -93,7 +93,7 @@ impl Config {
             password: env_required("SSTP_PASSWORD")?,
             password_field: env_or("SSTP_PASSWORD_FIELD", "password"),
             auth_cookie_name: env_or("SSTP_AUTH_COOKIE_NAME", "auth"),
-            list_url: env_or("SSTP_LIST_URL", "https://sub.cmliussss.net/vpngate"),
+            list_url: env_or("SSTP_LIST_URL", "https://vpngate.nicoo.dpdns.org"),
             check_url: env_or(
                 "SSTP_CHECK_URL",
                 "https://vps-vless.nicoo.dpdns.org/admin/check",
