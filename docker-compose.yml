@@ -1,0 +1,42 @@
+# cloudflare-best-sstp —— 容器编排
+#
+# 用法：
+#   1. 复制 .env.example 为 .env 并填写（至少 SSTP_PASSWORD）
+#   2. docker compose up --build        # 本地构建并运行
+#   或 docker compose up -d             # 使用已发布镜像
+#
+# 这是一个"一次性任务"：检测完成后容器退出（restart: "no"）。
+# 如需周期性刷新，请用宿主机 cron / systemd timer 调度 `docker compose up`，
+# 或使用仓库内置的 .github/workflows/scheduled-run.yml 定时工作流。
+
+services:
+  sstp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/jwygithub/cloudflare-best-sstp:latest
+    container_name: cloudflare-best-sstp
+    restart: "no"
+    # 所有配置（地址、密码、代理、GitHub 同步等）集中在 .env 中管理
+    env_file:
+      - .env
+    environment:
+      # 覆盖/固定若干运行期值（优先级高于 .env 中同名项）
+      OUTPUT_PATH: /app/output/sstp.txt
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      # 将结果持久化到宿主机 ./output 目录
+      - ./output:/app/output
+    # 正确的信号转发由镜像内 tini 负责；此处额外开启 init 作为双保险
+    init: true
+    # 轻量资源限制，避免异常占用（可按需调整）
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

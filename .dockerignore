@@ -1,0 +1,28 @@
+# 构建产物
+/target
+**/*.rs.bk
+
+# 版本控制与 CI
+.git
+.github
+.gitignore
+
+# 本地环境与密钥（绝不进镜像）
+.env
+.env.*
+!.env.example
+
+# 文档与杂项
+README.md
+LICENSE
+*.md
+index.ts
+
+# 运行产物
+/output
+sstp.txt
+
+# 编辑器 / 系统文件
+.idea
+.vscode
+.DS_Store

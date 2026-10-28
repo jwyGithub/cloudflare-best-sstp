@@ -1,0 +1,46 @@
+name: ci
+
+# 质量门禁：格式化、静态检查、测试、release 构建。
+# 仅在推送版本 tag（v*，例如 v0.0.1）时触发，作为发布前的最后一道关卡；
+# 任何一步失败都会阻断该 tag 的发布，保证被发布的版本始终可编译、可发布（高可用）。
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  check:
+    name: fmt + clippy + test + build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry & target
+        uses: Swatinem/rust-cache@v2
+
+      - name: Format check
+        run: cargo fmt --all --check
+
+      - name: Clippy (warnings as errors)
+        run: cargo clippy --all-targets --all-features --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --all-features --locked
+
+      - name: Release build
+        run: cargo build --release --locked
