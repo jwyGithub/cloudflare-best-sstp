@@ -1,6 +1,6 @@
 # cloudflare-best-sstp
 
-用 Rust 重写的 SSTP 节点联通性检测工具：登录换取鉴权 Cookie → 拉取节点订阅列表 →
+用 Rust 重写的 SSTP 节点联通性检测工具：登录换取鉴权 Cookie → 直连 VPN Gate 官方 API 拉取并解析节点列表 →
 并发检测每个节点的可用性与延迟 → 将可用节点按模板渲染后输出到**本地文件**并可选**同步到 GitHub 仓库**。
 
 全部配置由**环境变量**驱动，二进制运行在**容器**中，通过 **GitHub Actions** 打包发布与定时执行。
@@ -28,6 +28,7 @@ src/
 ├── sstp/
 │   ├── mod.rs
 │   ├── model.rs       # 节点数据模型
+│   ├── source.rs      # VPN Gate 官方 API 拉取 + CSV/OpenVPN 解析 → sstp:// 节点
 │   └── checker.rs     # 登录鉴权 + 节点并发联通性检测
 └── output/
     ├── mod.rs         # Sink trait + build_sinks / write_all
@@ -44,9 +45,20 @@ src/
 | --- | --- | --- | --- |
 | `SSTP_PASSWORD` | ✅ | — | 登录密码，换取鉴权 Cookie |
 | `SSTP_LOGIN_URL` | | `.../login` | 登录地址 |
-| `SSTP_LIST_URL` | | `.../vpngate` | 节点订阅列表地址 |
 | `SSTP_CHECK_URL` | | `.../admin/check` | 单节点检测地址 |
 | `SSTP_OUTPUT_TEMPLATE` | | `{host}#{loc}链式SSTP代理{proxy}` | 输出行模板，占位符 `{host} {loc} {proxy} {ip} {response_time}` |
+
+### VPN Gate 数据源
+直连 VPN Gate 官方 API（返回 CSV），本地解码每台服务器的 Base64 OpenVPN 配置、提取 TCP 端口后拼接为 `sstp://` 节点，**不经任何第三方中转**。
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `SSTP_VPNGATE_API_URL` | `https://www.vpngate.net/api/iphone/` | VPN Gate API 地址（CSV 服务器清单） |
+| `SSTP_VPNGATE_TCP_ONLY` | `true` | 仅保留 TCP 服务器（SSTP 基于 TCP，UDP-only 节点丢弃） |
+| `SSTP_NODE_SCHEME` | `sstp` | 生成节点使用的 scheme |
+| `SSTP_NODE_USERNAME` | `vpn` | 节点用户名（VPN Gate 公共服务器默认 `vpn`） |
+| `SSTP_NODE_PASSWORD` | `vpn` | 节点密码（VPN Gate 公共服务器默认 `vpn`） |
+| `SSTP_NODE_HOST_SUFFIX` | `.opengw.net` | HostName 拼接的主机后缀 |
 
 ### HTTP / 代理 / 性能
 | 变量 | 默认 | 说明 |

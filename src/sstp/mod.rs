@@ -2,5 +2,6 @@
 
 pub mod checker;
 pub mod model;
+pub mod source;
 
 pub use checker::SstpChecker;

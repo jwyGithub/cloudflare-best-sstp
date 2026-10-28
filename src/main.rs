@@ -57,8 +57,8 @@ async fn run() -> Result<()> {
 
     let http = HttpClient::new(&cfg.http)?;
 
-    // 1~4：登录 -> 拉取列表 -> 并发检测 -> 过滤可用节点
-    let checker = SstpChecker::new(&http, &cfg.request, cfg.http.concurrency);
+    // 1~4：登录 -> 从 VPN Gate 拉取列表 -> 并发检测 -> 过滤可用节点
+    let checker = SstpChecker::new(&http, &cfg.request, &cfg.source, cfg.http.concurrency);
     let nodes = checker.run().await?;
 
     // 渲染输出内容

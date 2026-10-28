@@ -12,6 +12,8 @@ use crate::error::ConfigError;
 #[derive(Debug, Clone)]
 pub struct Config {
     pub request: RequestConfig,
+    /// 节点数据源（VPN Gate）配置。
+    pub source: VpngateConfig,
     pub http: HttpConfig,
     pub output: OutputConfig,
     pub github: GithubConfig,
@@ -28,8 +30,6 @@ pub struct RequestConfig {
     pub password_field: String,
     /// 鉴权 Cookie 名称。
     pub auth_cookie_name: String,
-    /// SSTP 列表（订阅）地址。
-    pub list_url: String,
     /// 单个 SSTP 节点联通性检测地址。
     pub check_url: String,
     /// 请求使用的 Referer。
@@ -38,6 +38,26 @@ pub struct RequestConfig {
     pub server_host: String,
     /// 输出行模板，支持占位符：{host} {loc} {proxy} {ip} {response_time}
     pub output_template: String,
+}
+
+/// VPN Gate 数据源配置。
+///
+/// 直接访问 VPN Gate 官方 API（CSV），本地解析为 SSTP 节点列表，
+/// 不再依赖任何第三方中转。各项均可通过环境变量覆盖，默认值开箱即用。
+#[derive(Debug, Clone)]
+pub struct VpngateConfig {
+    /// VPN Gate API 地址（返回 CSV 格式的服务器清单）。
+    pub api_url: String,
+    /// 生成节点使用的 scheme（默认 sstp）。
+    pub scheme: String,
+    /// 节点用户名（VPN Gate 公共服务器默认 vpn）。
+    pub username: String,
+    /// 节点密码（VPN Gate 公共服务器默认 vpn）。
+    pub password: String,
+    /// 由 HostName 拼接出主机名的后缀（默认 .opengw.net）。
+    pub host_suffix: String,
+    /// 仅保留 OpenVPN 配置为 TCP 的服务器（SSTP 基于 TCP，UDP-only 节点丢弃）。
+    pub tcp_only: bool,
 }
 
 /// HTTP 客户端相关配置（代理、超时、重试、并发）。
@@ -93,7 +113,6 @@ impl Config {
             password: env_required("SSTP_PASSWORD")?,
             password_field: env_or("SSTP_PASSWORD_FIELD", "password"),
             auth_cookie_name: env_or("SSTP_AUTH_COOKIE_NAME", "auth"),
-            list_url: env_or("SSTP_LIST_URL", "https://sub.cmliussss.net/vpngate"),
             check_url: env_or(
                 "SSTP_CHECK_URL",
                 "https://vps-vless.nicoo.dpdns.org/admin/check",
@@ -101,6 +120,16 @@ impl Config {
             referer: env_or("SSTP_REFERER", "https://vps-vless.nicoo.dpdns.org"),
             server_host: env_or("SSTP_SERVER_HOST", "vps-vless.nicoo.dpdns.org"),
             output_template: env_or("SSTP_OUTPUT_TEMPLATE", "{host}#{loc}链式SSTP代理{proxy}"),
+        };
+
+        // 节点数据源：直连 VPN Gate 官方 API，本地解析 CSV，不再经任何第三方中转。
+        let source = VpngateConfig {
+            api_url: env_or("SSTP_VPNGATE_API_URL", "https://www.vpngate.net/api/iphone/"),
+            scheme: env_or("SSTP_NODE_SCHEME", "sstp"),
+            username: env_or("SSTP_NODE_USERNAME", "vpn"),
+            password: env_or("SSTP_NODE_PASSWORD", "vpn"),
+            host_suffix: env_or("SSTP_NODE_HOST_SUFFIX", ".opengw.net"),
+            tcp_only: env_bool("SSTP_VPNGATE_TCP_ONLY", true)?,
         };
 
         let http = HttpConfig {
@@ -146,6 +175,7 @@ impl Config {
 
         Ok(Config {
             request,
+            source,
             http,
             output,
             github,
