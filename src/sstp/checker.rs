@@ -20,16 +20,11 @@ use crate::sstp::model::{CheckResponse, ListResponse, SuccessNode};
 pub struct SstpChecker<'a> {
     http: &'a HttpClient,
     cfg: &'a RequestConfig,
-    concurrency: usize,
 }
 
 impl<'a> SstpChecker<'a> {
-    pub fn new(http: &'a HttpClient, cfg: &'a RequestConfig, concurrency: usize) -> Self {
-        Self {
-            http,
-            cfg,
-            concurrency,
-        }
+    pub fn new(http: &'a HttpClient, cfg: &'a RequestConfig) -> Self {
+        Self { http, cfg }
     }
 
     /// 执行完整检测流程，返回可用节点列表（保持列表原始顺序）。
@@ -134,7 +129,7 @@ impl<'a> SstpChecker<'a> {
                     }
                 }
             })
-            .buffer_unordered(self.concurrency)
+            .buffer_unordered(16)
             .filter_map(|r| async move { r })
             .collect()
             .await;

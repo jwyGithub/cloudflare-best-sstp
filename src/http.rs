@@ -1,16 +1,17 @@
 //! HTTP 客户端封装。
 //!
 //! 负责：
-//! - 构建带代理 / 超时 / 连接池复用的 `reqwest::Client`（高性能）；
+//! - 构建直连 / 超时 / 连接池复用的 `reqwest::Client`；
 //! - 对瞬时错误（网络错误 / 5xx / 429）提供指数退避重试（高可用）。
 
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use reqwest::{Client, Proxy, Response};
-use tracing::{debug, warn};
+use reqwest::{Client, Response};
+use tracing::warn;
 
-use crate::config::HttpConfig;
+const MAX_RETRIES: u32 = 3;
+const RETRY_BACKOFF: Duration = Duration::from_millis(500);
 
 /// 可复用的 HTTP 客户端 + 重试策略。
 #[derive(Clone)]
@@ -22,28 +23,21 @@ pub struct HttpClient {
 
 impl HttpClient {
     /// 根据配置构建客户端。
-    pub fn new(cfg: &HttpConfig) -> Result<Self> {
-        let mut builder = Client::builder()
-            .user_agent(&cfg.user_agent)
-            .timeout(cfg.timeout)
-            .connect_timeout(cfg.connect_timeout)
+    pub fn new() -> Result<Self> {
+        let builder = Client::builder()
+            .user_agent("cloudflare-best-sstp/0.1")
+            .timeout(Duration::from_secs(30))
+            .connect_timeout(Duration::from_secs(15))
             .pool_idle_timeout(Duration::from_secs(90))
-            .tcp_keepalive(Duration::from_secs(60));
-
-        // 显式代理优先；未显式配置时，reqwest 默认会读取系统 HTTP(S)_PROXY。
-        if let Some(proxy_url) = &cfg.proxy {
-            let proxy =
-                Proxy::all(proxy_url).with_context(|| format!("非法的代理地址: {proxy_url}"))?;
-            builder = builder.proxy(proxy);
-            debug!(proxy = %proxy_url, "已启用显式代理");
-        }
+            .tcp_keepalive(Duration::from_secs(60))
+            .no_proxy();
 
         let client = builder.build().context("构建 HTTP 客户端失败")?;
 
         Ok(Self {
             client,
-            max_retries: cfg.max_retries,
-            backoff: cfg.backoff(),
+            max_retries: MAX_RETRIES,
+            backoff: RETRY_BACKOFF,
         })
     }
 
@@ -152,11 +146,5 @@ impl HttpClient {
         let factor = 2u32.saturating_pow(attempt);
         let delay = self.backoff.saturating_mul(factor);
         tokio::time::sleep(delay).await;
-    }
-}
-
-impl HttpConfig {
-    fn backoff(&self) -> Duration {
-        self.retry_backoff
     }
 }

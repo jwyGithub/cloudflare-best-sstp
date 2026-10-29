@@ -1,74 +1,52 @@
 name: scheduled-run
 
-# 定时执行：拉取已发布的 GHCR 镜像运行节点检测，
-# 由程序自身的 GitHub 同步能力（Contents API）把结果写回本仓库。
-# 不在容器外再写一套提交逻辑——复用应用内置 output::github sink（不重复造轮子）。
-#
-# 前置条件：
-#   - docker-publish 工作流已至少成功发布过一次 :latest 镜像
-#   - 在仓库 Secrets 配置 SSTP_PASSWORD（必填），SSTP_PROXY（可选）
-#
-# 结果文件：写入本仓库默认分支的 sstp.txt。
-
 on:
   schedule:
-    # 东八区（UTC+8）每天早上 8:00 运行一次。
-    # GitHub Actions 的 cron 固定按 UTC 计算，不支持时区，
-    # 故 08:00 (UTC+8) = 00:00 (UTC)。
     - cron: "0 0 * * *"
   workflow_dispatch:
-    inputs:
-      file_path:
-        description: "结果在仓库中的目标路径"
-        required: false
-        default: "sstp.txt"
 
 concurrency:
   group: scheduled-run
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
-  contents: write   # 供程序通过 GITHUB_TOKEN 提交 sstp.txt
-  packages: read    # 供拉取 GHCR 私有镜像
+  contents: write
 
 jobs:
   run:
     runs-on: ubuntu-latest
     steps:
-      - name: Compute lowercase image name
-        id: img
-        run: echo "name=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Run detection & sync result to repo
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Run SSTP check
         env:
-          IMAGE: ghcr.io/${{ steps.img.outputs.name }}:latest
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SSTP_PASSWORD: ${{ secrets.SSTP_PASSWORD }}
-          SSTP_PROXY: ${{ secrets.SSTP_PROXY }}
-          # 非敏感的输出模板，接到仓库 Variables；未设置时传入空串，
-          # 程序侧 env_or 会自动回落到内置默认模板（不会产生空模板）。
-          OUTPUT_TEMPLATE: ${{ vars.SSTP_OUTPUT_TEMPLATE }}
-          FILE_PATH: ${{ github.event.inputs.file_path || 'sstp.txt' }}
+          SSTP_SERVER_HOST: ${{ vars.SSTP_SERVER_HOST }}
+          SSTP_LIST_URL: ${{ vars.SSTP_LIST_URL }}
+          SSTP_OUTPUT_TEMPLATE: ${{ vars.SSTP_OUTPUT_TEMPLATE }}
+        run: cargo run --quiet --release --locked > sstp.txt.tmp
+
+      - name: Preserve the previous result when no nodes are available
         run: |
-          set -euo pipefail
-          docker pull "$IMAGE"
-          docker run --rm \
-            -e SSTP_PASSWORD \
-            -e SSTP_PROXY \
-            -e SSTP_OUTPUT_FILE_ENABLED=false \
-            -e SSTP_OUTPUT_TEMPLATE="$OUTPUT_TEMPLATE" \
-            -e GITHUB_SYNC_ENABLED=true \
-            -e GITHUB_TOKEN="$GH_TOKEN" \
-            -e GITHUB_REPO="${GITHUB_REPOSITORY}" \
-            -e GITHUB_BRANCH="${GITHUB_REF_NAME}" \
-            -e GITHUB_FILE_PATH="$FILE_PATH" \
-            -e GITHUB_COMMIT_MESSAGE="chore: scheduled update sstp nodes" \
-            -e LOG_LEVEL=info \
-            "$IMAGE"
+          if [ ! -s sstp.txt.tmp ]; then
+            rm sstp.txt.tmp
+            echo "No nodes returned; keeping the existing sstp.txt"
+            exit 0
+          fi
+          mv sstp.txt.tmp sstp.txt
+
+      - name: Commit result
+        run: |
+          if git diff --quiet -- sstp.txt; then
+            echo "sstp.txt is unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sstp.txt
+          git commit -m "chore: update SSTP nodes"
+          git push

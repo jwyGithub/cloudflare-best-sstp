@@ -1,12 +1,11 @@
 name: ci
 
-# 质量门禁：格式化、静态检查、测试、release 构建。
-# 仅在推送版本 tag（v*，例如 v0.0.1）时触发，作为发布前的最后一道关卡；
-# 任何一步失败都会阻断该 tag 的发布，保证被发布的版本始终可编译、可发布（高可用）。
+# 分支推送和 Pull Request 的质量检查。
 
 on:
   push:
-    tags: ["v*"]
+    branches: ["**"]
+  pull_request:
   workflow_dispatch:
 
 concurrency:
